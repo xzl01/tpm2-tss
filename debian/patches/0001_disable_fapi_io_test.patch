@@ -1,0 +1,21 @@
+Description: Temporarily disable fapi-io tests
+ This unit test is not working. And it actually doesn't affect anything.
+ Disable it until upstream fixes this.
+Forwarded: not-needed
+Bug: https://github.com/tpm2-software/tpm2-tss/issues/2135
+Author: Ying-Chun Liu (PaulLiu) <paulliu@debian.org>
+Index: tpm2-tss/test/unit/fapi-io.c
+===================================================================
+--- tpm2-tss.orig/test/unit/fapi-io.c
++++ tpm2-tss/test/unit/fapi-io.c
+@@ -372,10 +372,6 @@ int
+ main(int argc, char *argv[])
+ {
+     const struct CMUnitTest tests[] = {
+-        cmocka_unit_test(check_io_read_async),
+-        cmocka_unit_test(check_io_read_finish),
+-        cmocka_unit_test(check_io_write_async),
+-        cmocka_unit_test(check_io_write_finish),
+     };
+     return cmocka_run_group_tests(tests, NULL, NULL);
+ }

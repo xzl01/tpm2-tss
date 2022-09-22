@@ -1,0 +1,47 @@
+From 68dc4cf012c976db4c6442da75605ba6b3ac13a9 Mon Sep 17 00:00:00 2001
+From: Juergen Repp <juergen.repp@sit.fraunhofer.de>
+Date: Wed, 14 Jul 2021 17:08:54 +0200
+Subject: [PATCH] FAPI: Improve error messages for decoding base64 data.
+
+Intel certificates are decoded from a base64 string. The base64 decode function
+returns NULL in error cases without error messages. Some error messages were added.
+Addresses #2113 (check_get_intl_cert_ok).
+
+Signed-off-by: Juergen Repp <juergen.repp@sit.fraunhofer.de>
+---
+ src/tss2-fapi/ifapi_get_intl_cert.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/tss2-fapi/ifapi_get_intl_cert.c b/src/tss2-fapi/ifapi_get_intl_cert.c
+index 38c1b14d..db628293 100644
+--- a/src/tss2-fapi/ifapi_get_intl_cert.c
++++ b/src/tss2-fapi/ifapi_get_intl_cert.c
+@@ -222,16 +222,24 @@ base64_decode(unsigned char* buffer, size_t len, size_t *new_len)
+         if (output) {
+             unescaped_string = strdup(output);
+             curl_free(output);
++        } else {
++            LOG_ERROR("curl_easy_unescape failed.");
+         }
++    } else {
++        LOG_ERROR("curl_easy_init failed.");
++        return NULL;
+     }
+     curl_easy_cleanup(curl);
+     curl_global_cleanup();
+-    if (unescaped_string == NULL)
++    if (unescaped_string == NULL) {
++        LOG_ERROR("Computation of unescaped string failed.");
+         return NULL;
++    }
+ 
+     binary_data = calloc(1, unescape_len);
+     if (binary_data == NULL) {
+         free (unescaped_string);
++        LOG_ERROR("Allocation of data for certificate failed.");
+         return NULL;
+     }
+ 
+-- 
+2.33.0
+
