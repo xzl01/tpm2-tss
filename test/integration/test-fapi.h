@@ -5,6 +5,9 @@
  *
  * All rights reserved.
  ***********************************************************************/
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 #include <assert.h>
 #include <json-c/json.h>
 #include <json-c/json_util.h>
@@ -113,7 +116,6 @@
         } \
         if (i >=  n) { \
             json_object_put(jso1); \
-            json_object_put(jso2); \
             LOG_ERROR("Mismatch" ); \
             goto LABEL; \
         } \
@@ -126,10 +128,17 @@
         LOG_ERROR("Error %s (%x) in Line %i: \n", msg, __LINE__, rc);   \
         goto label; }
 
+#ifndef FAPI_PROFILE
+#define FAPI_PROFILE DEFAULT_TEST_FAPI_PROFILE
+#endif /* FAPI_PROFILE */
+
 /* This variable is set to the same value in order to allow usage in if-statements etc. */
 extern char *fapi_profile;
 
 #define FAPI_POLICIES TOP_SOURCEDIR "/test/data/fapi"
+
+TSS2_RC
+pcr_extend(FAPI_CONTEXT *context, UINT32 pcr, TPML_DIGEST_VALUES *digest_values);
 
 TSS2_RC
 pcr_reset(FAPI_CONTEXT *context, UINT32 pcr);

@@ -4,7 +4,7 @@ DB2MAN = /usr/share/sgml/docbook/stylesheet/xsl/docbook-xsl/manpages/docbook.xsl
 XP     = xsltproc -''-nonet -''-param man.charmap.use.subset "0"
 
 %:
-	dh $@ --with autoreconf
+	dh $@
 
 override_dh_autoreconf:
 	export LIBDL_LDFLAGS="-ldl"
@@ -24,7 +24,7 @@ override_dh_auto_build: resourcemgr.1 tpmclient.1 tpmtest.1
 
 override_dh_install:
 	find debian/tmp \( -name '*.la' -o -name '*.a' \) -delete
-	dh_install --list-missing
+	dh_install
 
 resourcemgr.1: debian/resourcemgr.xml
 	$(XP) $(DB2MAN) $<

@@ -175,6 +175,13 @@ ifapi_json_TPMS_POLICYSIGNED_serialize(const TPMS_POLICYSIGNED *in,
 
         json_object_object_add(*jso, "publicKeyHint", jso2);
     }
+    if (in->publicKey.size) {
+        jso2 = NULL;
+        r = ifapi_json_TPM2B_NAME_serialize(&in->publicKey, &jso2);
+        return_if_error(r, "Serialize key name");
+
+        json_object_object_add(*jso, "publicKey", jso2);
+    }
     if (in->keyPEMhashAlg != 0) {
         jso2 = NULL;
         r = ifapi_json_TPMI_ALG_HASH_serialize(in->keyPEMhashAlg, &jso2);
@@ -327,9 +334,11 @@ ifapi_json_TPMS_POLICYNV_serialize(const TPMS_POLICYNV *in, json_object **jso)
         json_object_object_add(*jso, "nvIndex", jso2);
     }
 
-    if (in->nvPublic.nvPublic.nvIndex) {
+    if (in->nvPublic.nvIndex) {
         jso2 = NULL;
-        r = ifapi_json_TPM2B_NV_PUBLIC_serialize(&in->nvPublic, &jso2);
+        TPM2B_NV_PUBLIC tmp = { 0 };
+        tmp.nvPublic = in->nvPublic;
+        r = ifapi_json_TPM2B_NV_PUBLIC_serialize(&tmp, &jso2);
         return_if_error(r, "Serialize TPM2B_NV_PUBLIC");
 
         json_object_object_add(*jso, "nvPublic", jso2);
@@ -600,9 +609,10 @@ ifapi_json_TPMS_POLICYDUPLICATIONSELECT_serialize(const
         json_object_object_add(*jso, "newParentPath", jso2);
     }
 
-    if (in->newParentPublic.publicArea.type) {
+    if (in->newParentPublic.type) {
         jso2 = NULL;
-        r = ifapi_json_TPM2B_PUBLIC_serialize(&in->newParentPublic, &jso2);
+        cond_cnt++;
+        r = ifapi_json_TPMT_PUBLIC_serialize(&in->newParentPublic, &jso2);
         return_if_error(r, "Serialize TPM2B_PUBLIC");
 
         json_object_object_add(*jso, "newParentPublic", jso2);
@@ -793,21 +803,13 @@ ifapi_json_TPMS_POLICYTEMPLATE_serialize(const TPMS_POLICYTEMPLATE *in,
 
         json_object_object_add(*jso, "templateHash", jso2);
     }
-    if (in->templatePublic.size != 0) {
+    if (in->templatePublic.publicArea.type) {
         jso2 = NULL;
         cond_cnt++;
-        r = ifapi_json_TPM2B_PUBLIC_serialize(&in->templatePublic, &jso2);
+        r = ifapi_json_TPMT_PUBLIC_serialize(&in->templatePublic.publicArea, &jso2);
         return_if_error(r, "Serialize TPM2B_PUBLIC");
 
         json_object_object_add(*jso, "templatePublic", jso2);
-    }
-    if (in->templateName) {
-        jso2 = NULL;
-        cond_cnt++;
-        r = ifapi_json_char_serialize(in->templateName, &jso2);
-        return_if_error(r, "Serialize char");
-
-        json_object_object_add(*jso, "templateName", jso2);
     }
 
     /* Check whether only one condition field found in policy. */
@@ -848,10 +850,10 @@ ifapi_json_TPMS_POLICYAUTHORIZENV_serialize(const TPMS_POLICYAUTHORIZENV *in,
         json_object_object_add(*jso, "nvPath", jso2);
     }
     jso2 = NULL;
-    if (in->nvPublic.nvPublic.nvIndex > 0) {
+    if (in->nvPublic.nvIndex > 0) {
         cond_cnt++;
         /* Template already instantiated */
-        r = ifapi_json_TPM2B_NV_PUBLIC_serialize(&in->nvPublic, &jso2);
+        r = ifapi_json_TPMS_NV_PUBLIC_serialize(&in->nvPublic, &jso2);
         return_if_error(r, "Serialize TPM2B_NV_PUBLIC");
 
         json_object_object_add(*jso, "nvPublic", jso2);
@@ -1079,10 +1081,10 @@ ifapi_json_TPMS_POLICYAUTHORIZATION_serialize(
         json_object_object_add(*jso, "rsaScheme", jso2);
 
         jso2 = NULL;
-        r = ifapi_json_TPMI_ALG_HASH_serialize(in->keyPEMhashAlg, &jso2);
+        r = ifapi_json_TPMI_ALG_HASH_serialize(in->hashAlg, &jso2);
         return_if_error(r, "Serialize hash alg.");
 
-        json_object_object_add(*jso, "keyPEMhashAlg", jso2);
+        json_object_object_add(*jso, "hashAlg", jso2);
     } else {
         return_error(TSS2_FAPI_RC_GENERAL_FAILURE, "Invalid key type.");
     }

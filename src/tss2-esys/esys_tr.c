@@ -20,7 +20,7 @@
  *
  * Serialize the metadata of an ESYS_TR object into a byte buffer such that it
  * can be stored on disk for later use by a different program or context.
- * The serialized object can be deserialized suing Esys_TR_Deserialize.
+ * The serialized object can be deserialized using Esys_TR_Deserialize.
  * @param esys_context [in,out] The ESYS_CONTEXT.
  * @param esys_handle [in] The ESYS_TR object to serialize.
  * @param buffer [out] The buffer containing the serialized metadata.
@@ -65,15 +65,14 @@ Esys_TR_Serialize(ESYS_CONTEXT * esys_context,
  *
  * Deserialize the metadata of an ESYS_TR object from a byte buffer that was
  * stored on disk for later use by a different program or context.
- * An object can be serialized suing Esys_TR_Serialize.
+ * An object can be deserialized using Esys_TR_Deserialize.
  * @param esys_context [in,out] The ESYS_CONTEXT.
- * @param esys_handle [in] The ESYS_TR object to serialize.
- * @param buffer [out] The buffer containing the serialized metadata.
- *        (caller-callocated) Shall be freed using free().
- * @param buffer_size [out] The size of the buffer parameter.
+ * @param esys_handle [out] The ESYS_TR object to deserialize.
+ * @param buffer [in] The buffer containing the metadata of the ESYS_TR object.
+ * @param buffer_size [in] The size of the buffer parameter.
  * @retval TSS2_RC_SUCCESS on Success.
  * @retval TSS2_ESYS_RC_MEMORY if the object can not be allocated.
- * @retval TSS2_ESYS_RC_INSUFFICIENT_BUFFER if the buffer for unmarshaling.
+ * @retval TSS2_ESYS_RC_INSUFFICIENT_BUFFER if the buffer for unmarshalling.
  * @retval TSS2_ESYS_RC_BAD_REFERENCE if the esysContext is NULL.
  * @retval TSS2_RCs produced by lower layers of the software stack.
  */
@@ -134,11 +133,41 @@ Esys_TR_FromTPMPublic_Async(ESYS_CONTEXT * esys_context,
     _ESYS_ASSERT_NON_NULL(esys_context);
     ESYS_TR esys_handle = esys_context->esys_handle_cnt++;
     RSRC_NODE_T *esysHandleNode = NULL;
-    r = esys_CreateResourceObject(esys_context, esys_handle, &esysHandleNode);
-    goto_if_error(r, "Error create resource", error_cleanup);
+    RSRC_NODE_T *node_rsrc = NULL;
+    RSRC_NODE_T *next_node_rsrc;
 
-    esysHandleNode->rsrc.handle = tpm_handle;
-    esys_context->esys_handle = esys_handle;
+    for (node_rsrc = esys_context->rsrc_list; node_rsrc != NULL;
+         node_rsrc = next_node_rsrc) {
+         if (node_rsrc->rsrc.handle == tpm_handle) {
+             esysHandleNode = node_rsrc;
+             esys_context->esys_handle = node_rsrc->esys_handle;
+             break;
+         }
+         next_node_rsrc = node_rsrc->next;
+    }
+
+    if (!esysHandleNode) {
+        /* Object was already created */
+        esys_handle = esys_context->esys_handle_cnt++;
+        r = esys_CreateResourceObject(esys_context, esys_handle, &esysHandleNode);
+        goto_if_error(r, "Error create resource", error_cleanup);
+
+        /* In the first trial no session will be used to determine the object name. */
+        esys_context->sav_session1 = shandle1;
+        esys_context->sav_session2 = shandle2;
+        esys_context->sav_session3 = shandle3;
+        esys_context->session_tab[0] = NULL;
+        esys_context->session_tab[1] = NULL;
+        esys_context->session_tab[2] = NULL;
+        esysHandleNode->rsrc.handle = tpm_handle;
+        esys_context->esys_handle = esys_handle;
+        shandle1 = ESYS_TR_NONE;
+        shandle2 = ESYS_TR_NONE;
+        shandle3 = ESYS_TR_NONE;
+    } else {
+        esys_handle = esysHandleNode->esys_handle;
+        esys_context->esys_handle = esys_handle;
+    }
 
     if (tpm_handle >= TPM2_NV_INDEX_FIRST && tpm_handle <= TPM2_NV_INDEX_LAST) {
         r = Esys_NV_ReadPublic_Async(esys_context, esys_handle, shandle1,
@@ -189,6 +218,7 @@ Esys_TR_FromTPMPublic_Finish(ESYS_CONTEXT * esys_context, ESYS_TR * object)
     TSS2_RC r = TSS2_RC_SUCCESS;
     ESYS_TR objectHandle = ESYS_TR_NONE;
     RSRC_NODE_T *objectHandleNode;
+    bool first_call;
 
     _ESYS_ASSERT_NON_NULL(esys_context);
 
@@ -196,6 +226,9 @@ Esys_TR_FromTPMPublic_Finish(ESYS_CONTEXT * esys_context, ESYS_TR * object)
 
     r = esys_GetResourceObject(esys_context, objectHandle, &objectHandleNode);
     goto_if_error(r, "get resource", error_cleanup);
+
+    /* Check whether the object was already initialized. */
+    first_call = !objectHandleNode->rsrc.rsrcType;
 
     if (objectHandleNode->rsrc.handle >= TPM2_NV_INDEX_FIRST
         && objectHandleNode->rsrc.handle <= TPM2_NV_INDEX_LAST) {
@@ -209,13 +242,27 @@ Esys_TR_FromTPMPublic_Finish(ESYS_CONTEXT * esys_context, ESYS_TR * object)
         }
         goto_if_error(r, "Error NV_ReadPublic", error_cleanup);
 
-        objectHandleNode->rsrc.rsrcType = IESYSC_NV_RSRC;
-        objectHandleNode->rsrc.name = *nvName;
-        objectHandleNode->rsrc.misc.rsrc_nv_pub = *nvPublic;
+        bool is_nvname_mismatch = false;
+        if (first_call) {
+            objectHandleNode->rsrc.rsrcType = IESYSC_NV_RSRC;
+            objectHandleNode->rsrc.name = *nvName;
+            objectHandleNode->rsrc.misc.rsrc_nv_pub = *nvPublic;
+        } else {
+            if (objectHandleNode->rsrc.name.size != nvName->size ||
+                memcmp(&objectHandleNode->rsrc.name.name[0], &nvName->name[0], nvName->size) != 0) {
+                is_nvname_mismatch = true;
+            }
+        }
         SAFE_FREE(nvPublic);
         SAFE_FREE(nvName);
-    } else if(objectHandleNode->rsrc.handle >> TPM2_HR_SHIFT == TPM2_HT_LOADED_SESSION
-            || objectHandleNode->rsrc.handle >> TPM2_HR_SHIFT == TPM2_HT_SAVED_SESSION) {
+        if (is_nvname_mismatch) {
+            goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
+                "Name mismatch between two calls of Esys_TR_FromTPMPublic",
+                error_cleanup);
+        }
+    }
+    else if(objectHandleNode->rsrc.handle >> TPM2_HR_SHIFT == TPM2_HT_LOADED_SESSION
+       || objectHandleNode->rsrc.handle >> TPM2_HR_SHIFT == TPM2_HT_SAVED_SESSION) {
         objectHandleNode->rsrc.rsrcType = IESYSC_DEGRADED_SESSION_RSRC;
     } else {
         TPM2B_PUBLIC *public;
@@ -230,15 +277,45 @@ Esys_TR_FromTPMPublic_Finish(ESYS_CONTEXT * esys_context, ESYS_TR * object)
         }
         goto_if_error(r, "Error ReadPublic", error_cleanup);
 
-        objectHandleNode->rsrc.rsrcType = IESYSC_KEY_RSRC;
-        objectHandleNode->rsrc.name = *name;
-        objectHandleNode->rsrc.misc.rsrc_key_pub = *public;
+        if (first_call) {
+            objectHandleNode->rsrc.rsrcType = IESYSC_KEY_RSRC;
+            objectHandleNode->rsrc.name = *name;
+            objectHandleNode->rsrc.misc.rsrc_key_pub = *public;
+        } else {
+            if (objectHandleNode->rsrc.name.size != name->size ||
+                memcmp(&objectHandleNode->rsrc.name.name[0], &name->name[0], name->size) != 0) {
+                goto_error(r, TSS2_ESYS_RC_GENERAL_FAILURE,
+                           "Name mismatch between two calls of Esys_TR_FromTPMPublic",
+                           error_cleanup);
+            }
+        }
         SAFE_FREE(public);
         SAFE_FREE(name);
         SAFE_FREE(qualifiedName);
     }
-    *object = objectHandle;
-    return TSS2_RC_SUCCESS;
+
+    if (esys_context->sav_session1 != ESYS_TR_NONE && first_call) {
+        /* Initialize second call if session is used */
+        r = init_session_tab(esys_context, esys_context->sav_session1,
+                            esys_context->sav_session2, esys_context->sav_session3);
+        return_if_error(r, "Initialize session resources");
+
+        iesys_compute_session_value(esys_context->session_tab[0],
+                                    &objectHandleNode->rsrc.name, NULL);
+        iesys_compute_session_value(esys_context->session_tab[1], NULL, NULL);
+        iesys_compute_session_value(esys_context->session_tab[2], NULL, NULL);
+        r = Esys_TR_FromTPMPublic_Async(esys_context, objectHandleNode->rsrc.handle,
+                                        esys_context->session_tab[0]->esys_handle,
+                                        esys_context->session_tab[1] ?
+                                        esys_context->session_tab[1]->esys_handle : ESYS_TR_NONE,
+                                        esys_context->session_tab[2] ?
+                                        esys_context->session_tab[2]->esys_handle : ESYS_TR_NONE);
+        return_if_error(r, "Error TR FromTPMPublic");
+        return TSS2_ESYS_RC_TRY_AGAIN;
+    } else {
+        *object = objectHandle;
+        return TSS2_RC_SUCCESS;
+    }
 
  error_cleanup:
     Esys_TR_Close(esys_context, &objectHandle);
@@ -373,7 +450,7 @@ Esys_TR_Close(ESYS_CONTEXT * esys_context, ESYS_TR * object)
  * @retval TSS2_RC_SUCCESS on Success.
  * @retval TSS2_ESYS_RC_BAD_REFERENCE if the esysContext is NULL.
  * @retval TSS2_ESYS_RC_BAD_TR if the ESYS_TR object is unknown to the
- *         ESYS_CONTEXT.
+ *         ESYS_CONTEXT or it equals ESYS_TR_NONE.
  */
 TSS2_RC
 Esys_TR_SetAuth(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
@@ -384,6 +461,9 @@ Esys_TR_SetAuth(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
     TPMI_ALG_HASH name_alg = TPM2_ALG_NULL;
 
     _ESYS_ASSERT_NON_NULL(esys_context);
+    if (esys_handle == ESYS_TR_NONE) {
+      return_error(TSS2_ESYS_RC_BAD_TR, "esys_handle can't be ESYS_TR_NONE.");
+    }
     r = esys_GetResourceObject(esys_context, esys_handle, &esys_object);
     if (r != TPM2_RC_SUCCESS)
         return r;
@@ -403,7 +483,8 @@ Esys_TR_SetAuth(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
         esys_object->auth = *authValue;
         /* Adapt auth value to hash for large auth values. */
         if (name_alg != TPM2_ALG_NULL) {
-            r = iesys_hash_long_auth_values(&esys_object->auth, name_alg);
+            r = iesys_hash_long_auth_values(&esys_context->crypto_backend,
+                    &esys_object->auth, name_alg);
             return_if_error(r, "Hashing overlength authValue failed.");
         }
     }
@@ -421,6 +502,7 @@ Esys_TR_SetAuth(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
  * @retval TSS2_ESYS_RC_MEMORY if needed memory can't be allocated.
  * @retval TSS2_ESYS_RC_GENERAL_FAILURE for errors of the crypto library.
  * @retval TSS2_ESYS_RC_BAD_REFERENCE if the esysContext is NULL.
+ * @retval TSS2_ESYS_RC_BAD_TR if the handle is invalid.
  * @retval TSS2_SYS_RC_* for SAPI errors.
  */
 TSS2_RC
@@ -431,6 +513,10 @@ Esys_TR_GetName(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
     TSS2_RC r;
     _ESYS_ASSERT_NON_NULL(esys_context);
 
+    if (esys_handle == ESYS_TR_NONE) {
+        return_error(TSS2_ESYS_RC_BAD_TR, "Name for ESYS_TR_NONE can't be determined.");
+    }
+
     r = esys_GetResourceObject(esys_context, esys_handle, &esys_object);
     return_if_error(r, "Object not found");
 
@@ -440,12 +526,14 @@ Esys_TR_GetName(ESYS_CONTEXT * esys_context, ESYS_TR esys_handle,
         return TSS2_ESYS_RC_MEMORY;
     }
     if (esys_object->rsrc.rsrcType == IESYSC_KEY_RSRC) {
-        r = iesys_get_name(&esys_object->rsrc.misc.rsrc_key_pub, *name);
+        r = iesys_get_name(&esys_context->crypto_backend,
+                &esys_object->rsrc.misc.rsrc_key_pub, *name);
         goto_if_error(r, "Error get name", error_cleanup);
 
     } else {
         if (esys_object->rsrc.rsrcType == IESYSC_NV_RSRC) {
-            r = iesys_nv_get_name(&esys_object->rsrc.misc.rsrc_nv_pub, *name);
+            r = iesys_nv_get_name(&esys_context->crypto_backend,
+                    &esys_object->rsrc.misc.rsrc_nv_pub, *name);
             goto_if_error(r, "Error get name", error_cleanup);
 
         } else {

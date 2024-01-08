@@ -208,8 +208,10 @@ TSS2_RC Tss2_MU_##type##_Marshal(type const *src, uint8_t buffer[], \
         return rc; \
 \
     /* Update the size to the real value */ \
-    if (buffer) \
-        *(UINT16 *)ptr = HOST_TO_BE_16(buffer + local_offset - ptr - 2); \
+    if (buffer) { \
+        UINT16 t = HOST_TO_BE_16((UINT16)(buffer + local_offset - ptr - 2)); \
+        memcpy(ptr, &t, sizeof(t)); \
+    } \
 \
     if (offset != NULL) { \
         *offset = local_offset; \
@@ -347,6 +349,8 @@ TPM2B_MARSHAL  (TPM2B_OPERAND);
 TPM2B_UNMARSHAL(TPM2B_OPERAND, buffer);
 TPM2B_MARSHAL  (TPM2B_TEMPLATE);
 TPM2B_UNMARSHAL(TPM2B_TEMPLATE, buffer);
+TPM2B_MARSHAL(TPM2B_MAX_CAP_BUFFER);
+TPM2B_UNMARSHAL(TPM2B_MAX_CAP_BUFFER, buffer);
 TPM2B_MARSHAL_SUBTYPE(TPM2B_ECC_POINT, TPMS_ECC_POINT, point);
 TPM2B_UNMARSHAL_SUBTYPE(TPM2B_ECC_POINT, TPMS_ECC_POINT, point);
 TPM2B_MARSHAL_SUBTYPE(TPM2B_NV_PUBLIC, TPMS_NV_PUBLIC, nvPublic);

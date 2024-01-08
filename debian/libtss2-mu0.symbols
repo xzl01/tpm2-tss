@@ -37,6 +37,8 @@ libtss2-mu.so.0 libtss2-mu0 #MINVER#
  Tss2_MU_TPM2B_IV_Unmarshal@Base 3.0.1
  Tss2_MU_TPM2B_MAX_BUFFER_Marshal@Base 3.0.1
  Tss2_MU_TPM2B_MAX_BUFFER_Unmarshal@Base 3.0.1
+ Tss2_MU_TPM2B_MAX_CAP_BUFFER_Marshal@Base 4.0.1
+ Tss2_MU_TPM2B_MAX_CAP_BUFFER_Unmarshal@Base 4.0.1
  Tss2_MU_TPM2B_MAX_NV_BUFFER_Marshal@Base 3.0.1
  Tss2_MU_TPM2B_MAX_NV_BUFFER_Unmarshal@Base 3.0.1
  Tss2_MU_TPM2B_NAME_Marshal@Base 3.0.1
@@ -129,8 +131,6 @@ libtss2-mu.so.0 libtss2-mu0 #MINVER#
  Tss2_MU_TPMS_ACT_DATA_Unmarshal@Base 3.1.0
  Tss2_MU_TPMS_AC_OUTPUT_Marshal@Base 3.0.1
  Tss2_MU_TPMS_AC_OUTPUT_Unmarshal@Base 3.0.1
- Tss2_MU_TPMS_ALGORITHM_DESCRIPTION_Marshal@Base 3.0.1
- Tss2_MU_TPMS_ALGORITHM_DESCRIPTION_Unmarshal@Base 3.0.1
  Tss2_MU_TPMS_ALGORITHM_DETAIL_ECC_Marshal@Base 3.0.1
  Tss2_MU_TPMS_ALGORITHM_DETAIL_ECC_Unmarshal@Base 3.0.1
  Tss2_MU_TPMS_ALG_PROPERTY_Marshal@Base 3.0.1

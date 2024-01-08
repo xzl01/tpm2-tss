@@ -3,6 +3,140 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 
+## [4.0.1] - 2023-01-23
+### Fixed:
+ - A buffer overflow in tss2-rc as CVE-2023-22745.
+
+## [4.0.0] - 2023-01-02
+### Fixed
+  - tcti-ldr: Use heap instead of stack when tcti initialize
+ - Fix usage of NULL pointer if Esys_TR_SetAuth is calles with ESYS_TR_NONE.
+ - Conditionally check user/group manipulation commands.
+ - Store VERSION into the release tarball.
+ - When using DESTDIR for make einstall, do not invoke systemd-sysusers and systemd-tmpfiles.
+ - esys_iutil: fix possible NPD.
+ - Tss2_Sys_Flushcontext: flushHandle was encoded as a handleArea handle and not as parameter one, this affected the contents of cpHash.
+- esys: fix allow usage of HMAC sessions for Esys_TR_FromTPMPublic.
+- fapi: fix usage of policy_nv with a TPM nv index.
+- linking tcti for libtpms against tss2-tctildr. It should be linked against tss2-mu.
+- build: Remove erroneous trailing comma in linker option. Bug #2391.
+- fapi: fix encoding of complex tpm2bs in authorize nv, duplication select and policy template policies. Now the complex and TPMT or TPMS representations can be used. Bug #2383
+- The error message for unsupported FAPI curves was in hex without a leading 0x, make it integer output to clarify.
+- Documentation that had various scalar out pointers as "callee allocated".
+- test: build with opaque FILE structure like in musl libc.
+- Transient endorsement keys were not recreated according to the EK credential profile.
+- Evict control for a persistent EK failed during provisioning if an auth value for the storage hierarchy was set.
+- The authorization of the storage hierarchy is now added. Fixes FAPI: Provisioning error if an auth value is needed for the
+   storage hierarchy  #2438.
+- Usage of a second profile in a path was not possible because the default profile was always used.
+- The setting of an empty auth value for Fapi_Provision was fixed.
+- JSON encoding of a structure TPMS_POLICYAUTHORIZATION used the field keyPEMhashAlg instead of hashAlg as
+   defined in "TCG TSS 2.0 JSON Data Types and Policy Language Specification".  Rename to hashAlg but preserve support
+   for reading keyPEMhashAlg for backwards compatibility.
+- fapi: PolicySecret did not work with keys as secret object.
+- Esys_PCR_SetAuthValue: remembers the auth like other SetAutg ESAPI functions.
+- tests: esys-pcr-auth-value.int moved to destructive tests.
+- FAPI: Fix double free if keystore is corrupted.
+- Marshaling of TPMU_CAPABILITIES data, only field intelPttProperty was broken before.a
+- Spec deviation in Fapi_GetDescription caused description to be NULL when it should be empty string.
+  This is API breaking but considered a bug since it deviated from the FAPI spec.
+- FAPI: undefined reference to curl_url_strerror when using curl less than 7.80.0.
+- FAPI: Fixed support for EK templates in NV inidices per the spec, see #2518 for details.
+- FAPI: fix NPD in ifapi_curl logging.
+- FAPI: Improve documentation fapi-profile
+- FAPI: Fix CURL HTTP handling.
+- FAPI: Return FAPI_RC_IO_ERROR if a policy does not exist in keystore.
+
+### Added
+- TPM version 1.59 support.
+- ci: ubuntu-22.04 added.
+- mbedTLS 3.0 is supported by ESAPI.
+- Add CreationHash to JSON output for usage between applications not using the FAPI keystore, like command line tools.
+- Reduced code size for SAPI.
+- Support for Runtime Switchable ESAPI Crypto Backend via `Esys_SetCryptoCallbacks`.
+- Testing for TCG EK Credential Profile TPM 2.0, Version 2.4 Rev. 3, 2021 for the low and high address range of EK templates.
+- tss2-rc: Tss2_RC_DecodeInfo function for parsing TSS2_RC into the various bit fields.
+- FAPI support for P_ECC384 profile.
+- tss2-rc: Tss2_RC_DecodeInfoError: Function to get a human readable error from a TSS2_RC_INFO returned by
+  Tss2_RC_DecodeInfo
+- tcti: Generic SPI driver, implementors only need to connect to acquire/release, transmit/receive, and sleep/timeout functions.
+- FAPI: Add event logging for Firmware and IMA Events. See #2170 for details.
+- FAPI: Fix Fapi_ChangeAuth updates on hierarchy objects not being reflected across profiles.
+- FAPI: Allow keyedhash keys in PolicySigned.
+- ESAPI: Support sha512 for mbedtls crypto backend.
+- TPM2B_MAX_CAP_BUFFER and mu routines
+- vendor field to TPMU_CAPABILTIIES
+- FAPI: support for PolicyTemplate
+
+### Changed
+- libmu soname from 0:0:0 to 0:1:0.
+- tss2-sys soname from 1:0:0 to 1:1:0
+- tss2-esys: from 0:0:0 to 0:1:0
+- FAPI ignores vendor properties on Fapi_GetInfo
+- FAPI Event Logging JSON format, See #2170 for details.
+
+### Removed
+- Dead struct TPMS_ALGORITHM_DESCRIPTION
+- Dead field intelPttProperty from TPMU_CAPABILITIES
+- Dead code Tss2_MU_TPMS_ALGORITHM_DESCRIPTION_Marshal
+- Dead code Tss2_MU_TPMS_ALGORITHM_DESCRIPTION_Unmarshal
+
+## [3.2.0] - 2022-02-18
+### Fixed
+- FAPI: fix curl_url_set call
+- FAPI: Fix usage of curl url (Should fix Ubuntu 22.04)
+- Fix buffer upcast leading to misalignment
+- Fix check whether SM3 is available
+- Update git.mk to support R/O src-dir
+- Fixed file descriptor leak when tcti initialization failed.
+- 32 Bit builds of the integration tests.
+- Primary key creation, in some cases the unique field was not cleared before calling create primary.
+- Primary keys was used for signing the object were cleared after loading. So access e.g. to the certificate did not work.
+- Primary keys created with Fapi_Create with an auth value, the auth_value was not used in inSensitive to recreate the primary key. Now the auth value callback is used to initialize inSensitive.
+- The not possible usage of policies for primary keys generated with Fapi_CreatePrimary has been fixed.
+- An infinite loop when parsing erroneous JSON was fixed in FAPI.
+- A buffer overflow in ESAPI xor parameter obfuscation was fixed.
+- Certificates could be read only once in one application The setting the init state of the state automaton for getting certificates was fixed.
+- A double free when executing policy action was fixed.
+- A leak in Fapi_Quote was fixed.
+- The  wrong file locking in FAPI IO was fixed.
+- Enable creation of tss group and user on systems with busybox for fapi.
+- One fapi integration test did change the auth value of the storage hierarchy.
+- A leak in fapi crypto with ossl3 was fixed.
+- Add initial camelia support to FAPI
+- Fix tests of fapi PCR
+- Fix tests of ACT functionality if not supported by pTPM
+- Fix compiler (unused) warning when building without debug logging
+- Fix leaks in error cases of integration tests
+- Fix memory leak after ifapi_init_primary_finish failed
+- Fix double-close of stream in FAPI
+- Fix segfault when ESYS_TR_NONE is passed to Esys_TR_GetName
+- Fix the authorization of hierarchy objects used in policy secret.
+- Fix check of qualifying data in Fapi_VerifyQuote.
+- Fix some  leaks in FAPI error cases.
+- Make scripts compatible with non-posix shells where `test` does not know `-a` and `-o`.
+- Fix usage of variable not initialized when fapi keystore is empty.
+
+### Added
+- Add additional IFX root CAs
+- Added support for SM2, SM3 and SM4.
+- Added support for OpenSSL 3.0.0.
+- Added authPolicy field to the TPMU_CAPABILITIES union.
+- Added actData field to the TPMU_CAPABILITIES union.
+- Added TPM2_CAP_AUTH_POLICIES
+- Added TPM2_CAP_ACT constants.
+- Added updates to the marshalling and unmarshalling of the TPMU_CAPABILITIES union.
+- Added updated to the FAPI serializations and deserializations of the TPMU_CAPABILITIES union and associated types.
+- Add CODE_OF_CONDUCT
+- tcti-mssim and tcti-swtpm gained support for UDX communication
+- Missing constant for TPM2_RH_PW
+
+### Removed
+- Removed support for OpenSSL < 1.1.0.
+- Marked TPMS_ALGORITHM_DESCRIPTION and corresponding MU routines as deprecated.
+  Those were errorous typedefs that are not use and not useful. So we will remove this with 3.3
+- Marked TPM2_RS_PW as deprecated. Use TPM2_RH_PW instead.
+
 ## [3.1.0] - 2021-05-17
 ### Fixed
 - Fixed possible access outside the array in ifapi_calculate_tree.

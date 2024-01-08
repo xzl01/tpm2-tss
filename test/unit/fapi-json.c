@@ -25,110 +25,12 @@
 #include "ifapi_json_serialize.h"
 #include "ifapi_json_deserialize.h"
 #include "fapi_policy.h"
+#include "ifapi_helpers.h"
 
 #include "util/aux_util.h"
 
 #define LOGMODULE tests
 #include "util/log.h"
-
-/* 4 copies from ifapi_helpers.c */
-
-void
-ifapi_check_json_object_fields(
-    json_object *jso,
-    char** field_tab,
-    size_t size_of_tab)
-{
-    enum json_type type;
-    bool found;
-    size_t i;
-
-    type = json_object_get_type(jso);
-    if (type == json_type_object) {
-        json_object_object_foreach(jso, key, val) {
-            UNUSED(val);
-            found = false;
-            for (i = 0; i < size_of_tab; i++) {
-                if (strcmp(key, field_tab[i]) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                LOG_WARNING("Invalid field: %s", key);
-            }
-        }
-    }
-}
-
-static void
-cleanup_policy_element(TPMT_POLICYELEMENT *policy)
-{
-        switch (policy->type) {
-        case POLICYSECRET:
-            SAFE_FREE(policy->element.PolicySecret.objectPath);
-            break;
-        case POLICYAUTHORIZE:
-            SAFE_FREE(policy->element.PolicyAuthorize.keyPath);
-            SAFE_FREE(policy->element.PolicyAuthorize.keyPEM);
-            break;
-        case POLICYAUTHORIZENV:
-            SAFE_FREE( policy->element.PolicyAuthorizeNv.nvPath);
-            SAFE_FREE( policy->element.PolicyAuthorizeNv.policy_buffer);
-            break;
-        case POLICYSIGNED:
-            SAFE_FREE(policy->element.PolicySigned.keyPath);
-            SAFE_FREE(policy->element.PolicySigned.keyPEM);
-            break;
-        case POLICYPCR:
-            SAFE_FREE(policy->element.PolicyPCR.pcrs);
-            break;
-        case POLICYNV:
-            SAFE_FREE(policy->element.PolicyNV.nvPath);
-            break;
-        case POLICYDUPLICATIONSELECT:
-            SAFE_FREE(policy->element.PolicyDuplicationSelect.newParentPath);
-            break;
-        }
-}
-
-static void cleanup_policy_elements(TPML_POLICYELEMENTS *policy)
-{
-    size_t i, j;
-    if (policy != NULL) {
-        for (i = 0; i < policy->count; i++) {
-            if (policy->elements[i].type ==  POLICYOR) {
-                /* Policy with sub policies */
-                TPML_POLICYBRANCHES *branches = policy->elements[i].element.PolicyOr.branches;
-                for (j = 0; j < branches->count; j++) {
-                    SAFE_FREE(branches->authorizations[j].name);
-                    SAFE_FREE(branches->authorizations[j].description);
-                    cleanup_policy_elements(branches->authorizations[j].policy);
-                }
-                SAFE_FREE(branches);
-            } else {
-                cleanup_policy_element(&policy->elements[i]);
-            }
-        }
-        SAFE_FREE(policy);
-    }
-}
-
-/** Free memory allocated during deserialization of policy.
- *
- * The object will not be freed (might be declared on the stack).
- *
- * @param[in]  object The policy to be cleaned up.
- *
- */
-static void ifapi_cleanup_policy(TPMS_POLICY *policy)
-{
-    if (policy) {
-       SAFE_FREE(policy->description);
-       SAFE_FREE(policy->policyAuthorizations);
-       cleanup_policy_elements(policy->policy);
-    }
-}
 
 /* 6 copies of cleanup functions from ifapi_keystore.c */
 
@@ -270,6 +172,35 @@ char * normalize(const char *string) {
 
 #define CHECK_JSON(TYPE, SRC, DST)  \
     CHECK_JSON2(TYPE, SRC, DST, &out)
+
+#define CHECK_POLICY2(SRC, DST, PSERIALIZE)                   \
+        { \
+            TPMS_POLICY out; \
+            TSS2_RC rc; \
+            json_object *jso = json_tokener_parse((SRC)); \
+            if (!jso) fprintf(stderr, "JSON parsing failed\n"); \
+            assert_non_null(jso); \
+            rc = ifapi_json_TPMS_POLICY_deserialize (jso, &out); \
+            if (rc) fprintf(stderr, "Deserialization failed\n"); \
+            assert_int_equal (rc, TSS2_RC_SUCCESS); \
+            json_object_put(jso); \
+            jso = NULL; \
+            rc = ifapi_json_TPMS_POLICY_serialize (PSERIALIZE, &jso); \
+            assert_int_equal (rc, TSS2_RC_SUCCESS); \
+            assert_non_null(jso); \
+            const char *jso_string = json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY); \
+            assert_non_null(jso_string); \
+            char *string1 = normalize(jso_string); \
+            char *string2 =  normalize(DST); \
+            assert_string_equal(string1, string2); \
+            json_object_put(jso); \
+            ifapi_cleanup_policy(&out); \
+            free(string1); \
+            free(string2); \
+        }
+
+#define CHECK_POLICY(SRC, DST)  \
+    CHECK_POLICY2(SRC, DST, &out)
 
 #define CHECK_JSON_SIMPLE(TYPE, SRC, DST)  \
     CHECK_JSON2(TYPE, SRC, DST, out)
@@ -523,17 +454,6 @@ check_bin(void **state)
     };
 
     CHECK_BIN(TPML_PCR_SELECTION, pcr_selection);
-
-    IFAPI_IMA_EVENT imaEvent = {
-        .eventData = {
-            .size = 0,
-            .buffer = { 0 }
-        },
-        .eventName = "Event"
-    };
-
-    CHECK_BIN(IFAPI_IMA_EVENT, imaEvent);
-    free(imaEvent2.eventName);
 }
 
 static void
@@ -713,7 +633,7 @@ check_json_structs(void **state)
         "  \"size\":0,\n"
         "  \"publicArea\":{\n"
         "    \"type\":\"ECC\",\n"
-        "    \"nameAlg\":\"SHA1\",\n"
+        "    \"nameAlg\":\"sha1\",\n"
         "\"objectAttributes\":{"
         "      \"fixedTPM\":1,"
         "      \"stClear\":0,"
@@ -735,7 +655,7 @@ check_json_structs(void **state)
         "      \"scheme\":{\n"
         "        \"scheme\":\"ECDAA\",\n"
         "        \"details\":{\n"
-        "          \"hashAlg\":\"SHA256\",\n"
+        "          \"hashAlg\":\"sha256\",\n"
         "          \"count\":0\n"
         "        }\n"
         "      },\n"
@@ -756,7 +676,7 @@ check_json_structs(void **state)
         "  \"size\":0,"
         "  \"publicArea\":{"
         "    \"type\":\"ECC\","
-        "    \"nameAlg\":\"SHA1\","
+        "    \"nameAlg\":\"sha1\","
         "    \"objectAttributes\":["
         "      \"fixedTPM\","
         "      \"fixedParent\","
@@ -773,7 +693,7 @@ check_json_structs(void **state)
         "      \"scheme\":{"
         "        \"scheme\":\"ECDAA\","
         "        \"details\":{"
-        "          \"hashAlg\":\"SHA256\","
+        "          \"hashAlg\":\"sha256\","
         "          \"count\":0"
         "        }"
         "      },"
@@ -981,7 +901,7 @@ check_json_structs(void **state)
         "    \"firmwareVersion\": 783,\n"
         "    \"attested\": {\n"
         "        \"auditCounter\": 456,\n"
-        "        \"digestAlg\": \"SHA1\",\n"
+        "        \"digestAlg\": \"sha1\",\n"
         "        \"auditDigest\": \"00010203040506070809c0c1c2c3c4c5c6c7c8c9\",\n"
         "        \"commandDigest\": \"00010203040506070809d0d1d2d3d4d5d6d7d8d9\"\n"
         "    }\n"
@@ -1086,14 +1006,14 @@ check_json_structs(void **state)
         "{\n"
         "    \"scheme\": \"HMAC\",\n"
         "    \"details\": {\n"
-        "        \"hashAlg\": \"SHA256\"\n"
+        "        \"hashAlg\": \"sha256\"\n"
         "    }\n"
         "}";
     const char *test_json_TPMT_KEYEDHASH_SCHEME_hmac_expt =
         "{\n"
         "    \"scheme\": \"HMAC\",\n"
         "    \"details\": {\n"
-        "        \"hashAlg\": \"SHA256\"\n"
+        "        \"hashAlg\": \"sha256\"\n"
         "    }\n"
         "}";
     CHECK_JSON(TPMT_KEYEDHASH_SCHEME, test_json_TPMT_KEYEDHASH_SCHEME_hmac_src, test_json_TPMT_KEYEDHASH_SCHEME_hmac_expt);
@@ -1102,7 +1022,7 @@ check_json_structs(void **state)
         "{\n"
         "    \"scheme\": \"XOR\",\n"
         "    \"details\": {\n"
-        "        \"hashAlg\": \"SHA256\",\n"
+        "        \"hashAlg\": \"sha256\",\n"
         "        \"kdf\": \"MGF1\"\n"
         "    }\n"
         "}";
@@ -1110,20 +1030,164 @@ check_json_structs(void **state)
         "{\n"
         "    \"scheme\": \"XOR\",\n"
         "    \"details\": {\n"
-        "        \"hashAlg\": \"SHA256\",\n"
+        "        \"hashAlg\": \"sha256\",\n"
         "        \"kdf\": \"MGF1\"\n"
         "    }\n"
         "}";
     CHECK_JSON(TPMT_KEYEDHASH_SCHEME, test_json_TPMT_KEYEDHASH_SCHEME_xor_src, test_json_TPMT_KEYEDHASH_SCHEME_xor_expt);
 
+    const char *test_json_TPMS_TAGGED_POLICY_sha256_src =
+        "{\n"
+        "    \"handle\":0,"
+        "    \"policyHash\": {\n"
+        "        \"hashAlg\":\"sha256\",\n"
+        "        \"digest\":\"59215cb6c21a60e26b2cc479334a021113611903795507c1227659e2aef23d16\"\n"
+        "    }\n"
+        "}";
+
+    const char *test_json_TPMS_TAGGED_POLICY_sha256_expt =
+        "{\n"
+        "    \"handle\":0,"
+        "    \"policyHash\": {\n"
+        "        \"hashAlg\":\"sha256\",\n"
+        "        \"digest\":\"59215cb6c21a60e26b2cc479334a021113611903795507c1227659e2aef23d16\"\n"
+        "    }\n"
+        "}";
+    CHECK_JSON(TPMS_TAGGED_POLICY, test_json_TPMS_TAGGED_POLICY_sha256_src, test_json_TPMS_TAGGED_POLICY_sha256_expt);
+
+    const char *test_json_TPMS_ACT_DATA_src =
+        "{"
+        "    \"handle\":0,"
+        "    \"timeout\":23,"
+        "    \"attributes\":["
+        "      \"signaled\""
+        "    ],"
+        "}";
+
+    const char *test_json_TPMS_ACT_DATA_expt =
+        "{\n"
+        "    \"handle\":0,\n"
+        "    \"timeout\":23,\n"
+        "    \"attributes\":{"
+        "      \"signaled\":1,"
+        "      \"preserveSignaled\":0"
+        "    }"
+        "}";
+    CHECK_JSON(TPMS_ACT_DATA, test_json_TPMS_ACT_DATA_src, test_json_TPMS_ACT_DATA_expt);
+
+    /*
+     * Check whether policy version with complex TPM2B for newParentPublic in policy
+     * POLICYDUPLICATIONSELECT is deserialized to TPMT_PUBLIC.
+     */
+
+    const char *test_json_TPMS_POLICY_src =
+        "{\n"
+        "    \"description\":\"Description pol_duplicate\",\n"
+        "    \"policy\":[\n"
+        "        {\n"
+        "            \"type\": \"POLICYDUPLICATIONSELECT\",\n"
+        "            \"newParentPublic\":\n"
+        "            {\n"
+        "                \"size\":90,\n"
+        "                \"publicArea\":{\n"
+        "                    \"type\":\"ECC\",\n"
+        "                    \"nameAlg\":\"sha256\",\n"
+        "                    \"objectAttributes\":{\n"
+        "                        \"fixedTPM\":1,\n"
+        "                        \"stClear\":0,\n"
+        "                        \"fixedParent\":1,\n"
+        "                        \"sensitiveDataOrigin\":1,\n"
+        "                        \"userWithAuth\":1,\n"
+        "                        \"adminWithPolicy\":0,\n"
+        "                        \"noDA\":1,\n"
+        "                        \"encryptedDuplication\":0,\n"
+        "                        \"restricted\":1,\n"
+        "                        \"decrypt\":1,\n"
+        "                        \"sign\":0\n"
+        "                    },\n"
+        "                    \"authPolicy\":\"\",\n"
+        "                    \"parameters\":{\n"
+        "                        \"symmetric\":{\n"
+        "                            \"algorithm\":\"AES\",\n"
+        "                            \"keyBits\":128,\n"
+        "                            \"mode\":\"CFB\"\n"
+        "                        },\n"
+        "                        \"scheme\":{\n"
+        "                            \"scheme\":\"NULL\"\n"
+        "                        },\n"
+        "                        \"curveID\":\"NIST_P256\",\n"
+        "                        \"kdf\":{\n"
+        "                            \"scheme\":\"NULL\"\n"
+        "                        }\n"
+        "                    },\n"
+        "                    \"unique\":{\n"
+        "                        \"x\":\"a12497c5ba7473779d02fd7a9df5b7afc7bc6db6d9f5eccb0b74a265259cacce\",\n"
+        "                        \"y\":\"b92b44809e190e721524696e2eab1da8dea0f7bd9cd6c38d5d9804c5c64faa95\"\n"
+        "                    }\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    ]\n"
+        "}\n";
+
+       const char *test_json_TPMS_POLICY_expt =
+        "{\n"
+        "    \"description\":\"Description pol_duplicate\",\n"
+        "    \"policyDigests\":[],\n"
+        "    \"policy\":[\n"
+        "        {\n"
+        "            \"type\": \"POLICYDUPLICATIONSELECT\",\n"
+        "            \"objectName\":\"\",\"includeObject\":\"NO\","
+        "            \"newParentPublic\":\n"
+        "            {\n"
+        "                \"type\":\"ECC\",\n"
+        "                \"nameAlg\":\"sha256\",\n"
+        "                \"objectAttributes\":{\n"
+        "                    \"fixedTPM\":1,\n"
+        "                    \"stClear\":0,\n"
+        "                    \"fixedParent\":1,\n"
+        "                    \"sensitiveDataOrigin\":1,\n"
+        "                    \"userWithAuth\":1,\n"
+        "                    \"adminWithPolicy\":0,\n"
+        "                    \"noDA\":1,\n"
+        "                    \"encryptedDuplication\":0,\n"
+        "                    \"restricted\":1,\n"
+        "                    \"decrypt\":1,\n"
+        "                    \"sign\":0\n"
+        "                },\n"
+        "                \"authPolicy\":\"\",\n"
+        "                \"parameters\":{\n"
+        "                    \"symmetric\":{\n"
+        "                        \"algorithm\":\"AES\",\n"
+        "                        \"keyBits\":128,\n"
+        "                        \"mode\":\"CFB\"\n"
+        "                    },\n"
+        "                    \"scheme\":{\n"
+        "                        \"scheme\":\"NULL\"\n"
+        "                    },\n"
+        "                    \"curveID\":\"NIST_P256\",\n"
+        "                    \"kdf\":{\n"
+        "                        \"scheme\":\"NULL\"\n"
+        "                    }\n"
+        "                },\n"
+        "                \"unique\":{\n"
+        "                    \"x\":\"a12497c5ba7473779d02fd7a9df5b7afc7bc6db6d9f5eccb0b74a265259cacce\",\n"
+        "                    \"y\":\"b92b44809e190e721524696e2eab1da8dea0f7bd9cd6c38d5d9804c5c64faa95\"\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    ]\n"
+        "}\n";
+
+      CHECK_POLICY(test_json_TPMS_POLICY_src, test_json_TPMS_POLICY_expt);
 }
 
 static void
 check_json_constants(void **state)
 {
-    CHECK_JSON_SIMPLE(TPMI_ALG_HASH, "\"sha1\"", "\"SHA1\"");
-    CHECK_JSON_SIMPLE(TPMI_ALG_HASH, "\"0x04\"", "\"SHA1\"");
-    CHECK_JSON_SIMPLE(TPMI_ALG_HASH, "4", "\"SHA1\"");
+    CHECK_JSON_SIMPLE(TPMI_ALG_HASH, "\"sha1\"", "\"sha1\"");
+    CHECK_JSON_SIMPLE(TPMI_ALG_HASH, "\"0x04\"", "\"sha1\"");
+    CHECK_JSON_SIMPLE(TPMI_ALG_HASH, "4", "\"sha1\"");
 }
 
 static void
@@ -1164,6 +1228,36 @@ check_json_bits(void **state)
                       "\"0\"",
                       "{\"fixedTPM\":0,\"stClear\":0,\"fixedParent\":0,\"sensitiveDataOrigin\":0,\"userWithAuth\":0,"
                       "\"adminWithPolicy\":0,\"noDA\":0,\"encryptedDuplication\":0,\"restricted\":0,\"decrypt\":0,\"sign\":0}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "\"0\"",
+                      "{\"signaled\":0,\"preserveSignaled\":0}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "0",
+                      "{\"signaled\":0,\"preserveSignaled\":0}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "\"1\"",
+                      "{\"signaled\":1,\"preserveSignaled\":0}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "1",
+                      "{\"signaled\":1,\"preserveSignaled\":0}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "\"2\"",
+                      "{\"signaled\":0,\"preserveSignaled\":1}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "2",
+                      "{\"signaled\":0,\"preserveSignaled\":1}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "\"3\"",
+                      "{\"signaled\":1,\"preserveSignaled\":1}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                      "3",
+                      "{\"signaled\":1,\"preserveSignaled\":1}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                    "{\"signaled\":1,\"preserveSignaled\":0}",
+                    "{\"signaled\":1,\"preserveSignaled\":0}");
+    CHECK_JSON_SIMPLE(TPMA_ACT,
+                    "{\"signaled\":0,\"preserveSignaled\":1}",
+                    "{\"signaled\":0,\"preserveSignaled\":1}");
 
     const char *test_json_TPMA_NV_expected =\
                     "{"
@@ -1323,7 +1417,7 @@ check_json_policy(void **state)
         "  \"description\":\"hareness description\","
         "  \"policyDigests\":["
         "    {"
-        "      \"hashAlg\":\"SHA256\","
+        "      \"hashAlg\":\"sha256\","
         "      \"digest\":\"59215cb6c21a60e26b2cc479334a021113611903795507c1227659e2aef23d16\""
         "    }"
         "  ],"
@@ -1332,7 +1426,7 @@ check_json_policy(void **state)
         "      \"type\":\"POLICYOR\","
         "      \"policyDigests\":["
         "        {"
-        "          \"hashAlg\":\"SHA256\","
+        "          \"hashAlg\":\"sha256\","
         "          \"digest\":\"59215cb6c21a60e26b2cc479334a021113611903795507c1227659e2aef23d16\""
         "        }"
         "      ],"
@@ -1345,14 +1439,14 @@ check_json_policy(void **state)
         "                \"type\":\"POLICYPCR\","
         "                \"policyDigests\":["
         "                  {"
-        "                    \"hashAlg\":\"SHA256\","
+        "                    \"hashAlg\":\"sha256\","
         "                    \"digest\":\"17d552f8e39ad882f6b3c09ae139af59616bf6a63f4093d6d20e9e1b9f7cdb6e\""
         "                  }"
         "                ],"
         "                  \"pcrs\":["
         "                    {"
         "                      \"pcr\":16,"
-        "                      \"hashAlg\":\"SHA1\","
+        "                      \"hashAlg\":\"sha1\","
         "                      \"digest\":\"0000000000000000000000000000000000000000\""
         "                    }"
         "                  ]"
@@ -1360,7 +1454,7 @@ check_json_policy(void **state)
         "            ],"
         "            \"policyDigests\":["
         "              {"
-        "                \"hashAlg\":\"SHA256\","
+        "                \"hashAlg\":\"sha256\","
         "                \"digest\":\"17d552f8e39ad882f6b3c09ae139af59616bf6a63f4093d6d20e9e1b9f7cdb6e\""
         "              }"
         "            ]"
@@ -1373,14 +1467,14 @@ check_json_policy(void **state)
         "                \"type\":\"POLICYPCR\","
         "                \"policyDigests\":["
         "                  {"
-        "                    \"hashAlg\":\"SHA256\","
+        "                    \"hashAlg\":\"sha256\","
         "                    \"digest\":\"17d552f8e39ad882f6b3c09ae139af59616bf6a63f4093d6d20e9e1b9f7cdb6e\""
         "                  }"
         "                ],"
         "                  \"pcrs\":["
         "                    {"
         "                      \"pcr\":16,"
-        "                      \"hashAlg\":\"SHA1\","
+        "                      \"hashAlg\":\"sha1\","
         "                      \"digest\":\"0000000000000000000000000000000000000000\""
         "                    }"
         "                  ]"
@@ -1388,7 +1482,7 @@ check_json_policy(void **state)
         "            ],"
         "            \"policyDigests\":["
         "              {"
-        "                \"hashAlg\":\"SHA256\","
+        "                \"hashAlg\":\"sha256\","
         "                \"digest\":\"17d552f8e39ad882f6b3c09ae139af59616bf6a63f4093d6d20e9e1b9f7cdb6e\""
         "              }"
         "            ]"
@@ -1453,7 +1547,7 @@ check_error(void **state)
                 TSS2_FAPI_RC_BAD_VALUE);
 
     /* Illegal values */
-    CHECK_ERROR(TPMI_ALG_HASH, "\"SHA9999\"", TSS2_FAPI_RC_BAD_VALUE);
+    CHECK_ERROR(TPMI_ALG_HASH, "\"sha9999\"", TSS2_FAPI_RC_BAD_VALUE);
     CHECK_ERROR(TPM2B_DIGEST, "\"xxxx\"", TSS2_FAPI_RC_BAD_VALUE);
     CHECK_ERROR(TPM2B_DIGEST, "\"0x010x\"", TSS2_FAPI_RC_BAD_VALUE);
 
@@ -1488,7 +1582,7 @@ check_error(void **state)
         "    \"size\":122,"
         "    \"publicArea\":{"
         "      \"type\":\"ECC\","
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"objectAttributes\":1,"
         "      \"authPolicy\":\"837197674484b3f81a90cc8d46a5d724fd52d76e06520b64f2a1da1b331469aa\","
         "      \"parameters\":{"
@@ -1525,7 +1619,7 @@ check_error(void **state)
         "    \"size\":122,"
         "    \"publicArea\":{"
         "      \"type\":\"ECC\","
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"objectAttributes\":{"
         "        \"fixedTPM\":1,"
         "        \"stClear\":0,"
@@ -1575,7 +1669,7 @@ check_error(void **state)
         "    \"size\":122,"
         "    \"publicArea\":{"
         "      \"type\":\"ECC\","
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"objectAttributes\":{"
         "        \"fixedTPM\":1,"
         "        \"stClear\":0,"
@@ -1627,7 +1721,7 @@ check_error(void **state)
         "    \"size\":122,"
         "    \"publicArea\":{"
         "      \"type\":\"ECC\","
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"objectAttributes\":{"
         "        \"fixedTPM\":1,"
         "        \"stClear\":0,"
@@ -1677,7 +1771,7 @@ check_error(void **state)
         "    \"size\":122,"
         "    \"publicArea\":{"
         "      \"type\":\"ECC\","
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"objectAttributes\":{"
         "        \"fixedTPM\":1,"
         "        \"stClear\":0,"
@@ -1730,7 +1824,7 @@ check_error(void **state)
         "    \"size\":122,"
         "    \"publicArea\":{"
         "      \"type\":\"ECC\","
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"objectAttributes\":{"
         "        \"fixedTPM\":1,"
         "        \"stClear\":0,"
@@ -1774,7 +1868,7 @@ check_error(void **state)
           "  \"signing_scheme\":{"
           "    \"scheme\":\"ECDSA\","
           "    \"details\":{"
-          "      \"hashAlg\":\"SHA256\""
+          "      \"hashAlg\":\"sha256\""
           "    }"
           "  },"
          "}";
@@ -1804,7 +1898,7 @@ check_error(void **state)
         "    \"size\":0,"
         "    \"nvPublic\":{"
         "      \"nvIndex\":25165824,"
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"attributes\":{"
         "        \"PPWRITE\":0,"
         "        \"OWNERWRITE\":0,"
@@ -1850,7 +1944,7 @@ check_error(void **state)
         "    \"size\":0,"
         "    \"nvPublic\":{"
         "      \"nvIndex\":25165824,"
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"attributes\":{"
         "        \"PPWRITE\":0,"
         "        \"OWNERWRITE\":0,"
@@ -1893,7 +1987,7 @@ check_error(void **state)
         "    \"size\":0,"
         "    \"nvPublic\":{"
         "      \"nvIndex\":25165824,"
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"attributes\":{"
         "        \"PPWRITE\":0,"
         "        \"OWNERWRITE\":0,"
@@ -1938,7 +2032,7 @@ check_error(void **state)
         "    \"size\":0,"
         "    \"nvPublic\":{"
         "      \"nvIndex\":25165824,"
-        "      \"nameAlg\":\"SHA256\","
+        "      \"nameAlg\":\"sha256\","
         "      \"attributes\":{"
         "        \"PPWRITE\":0,"
         "        \"OWNERWRITE\":0,"
@@ -2210,9 +2304,9 @@ static void
 check_tpmjson_tofromtxt(void **state)
 {
     const char *testcase_alg_id[] = { "\"TPM_ALG_ID_SHA1\"", "\"TPM2_ALG_ID_SHA1\"",
-                                      "\"ALG_ID_SHA1\"", "\"SHA1\"", "\"ALG_SHA1\"",
+                                      "\"ALG_ID_SHA1\"", "\"sha1\"", "\"ALG_SHA1\"",
                                       "\"tpm2_alg_id_sha1\"", "\"sha1\"", "\"0x0004\"" };
-    const char *expected_ald_id = { "\"SHA1\"" };
+    const char *expected_ald_id = { "\"sha1\"" };
     for (size_t i = 0; i < sizeof(testcase_alg_id) / sizeof(testcase_alg_id[0]); i++) {
         CHECK_JSON_SIMPLE(TPM2_ALG_ID, testcase_alg_id[i], expected_ald_id);
     }
@@ -2260,6 +2354,12 @@ check_tpmjson_tofromtxt(void **state)
     }
 }
 
+static void
+check_invalid_json(void **state) {
+      json_object *jso = ifapi_parse_json("{\n \"field\", \"value\"");
+      assert_null(jso);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2275,6 +2375,7 @@ main(int argc, char *argv[])
         cmocka_unit_test(check_policy_bin),
         cmocka_unit_test(check_error),
         cmocka_unit_test(check_json_policy),
+        cmocka_unit_test(check_invalid_json),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

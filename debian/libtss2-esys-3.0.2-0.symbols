@@ -2,6 +2,12 @@ libtss2-esys.so.0 libtss2-esys-3.0.2-0 #MINVER#
  Esys_ACT_SetTimeout@Base 3.1.0
  Esys_ACT_SetTimeout_Async@Base 3.1.0
  Esys_ACT_SetTimeout_Finish@Base 3.1.0
+ Esys_AC_GetCapability@Base 4.0.1
+ Esys_AC_GetCapability_Async@Base 4.0.1
+ Esys_AC_GetCapability_Finish@Base 4.0.1
+ Esys_AC_Send@Base 4.0.1
+ Esys_AC_Send_Async@Base 4.0.1
+ Esys_AC_Send_Finish@Base 4.0.1
  Esys_ActivateCredential@Base 2.3.1
  Esys_ActivateCredential_Async@Base 2.3.1
  Esys_ActivateCredential_Finish@Base 2.3.1
@@ -149,6 +155,12 @@ libtss2-esys.so.0 libtss2-esys-3.0.2-0 #MINVER#
  Esys_LoadExternal_Finish@Base 2.3.1
  Esys_Load_Async@Base 2.3.1
  Esys_Load_Finish@Base 2.3.1
+ Esys_MAC@Base 4.0.1
+ Esys_MAC_Async@Base 4.0.1
+ Esys_MAC_Finish@Base 4.0.1
+ Esys_MAC_Start@Base 4.0.1
+ Esys_MAC_Start_Async@Base 4.0.1
+ Esys_MAC_Start_Finish@Base 4.0.1
  Esys_MakeCredential@Base 2.3.1
  Esys_MakeCredential_Async@Base 2.3.1
  Esys_MakeCredential_Finish@Base 2.3.1
@@ -284,6 +296,9 @@ libtss2-esys.so.0 libtss2-esys-3.0.2-0 #MINVER#
  Esys_PolicyTicket@Base 2.3.1
  Esys_PolicyTicket_Async@Base 2.3.1
  Esys_PolicyTicket_Finish@Base 2.3.1
+ Esys_Policy_AC_SendSelect@Base 4.0.1
+ Esys_Policy_AC_SendSelect_Async@Base 4.0.1
+ Esys_Policy_AC_SendSelect_Finish@Base 4.0.1
  Esys_Quote@Base 2.3.1
  Esys_Quote_Async@Base 2.3.1
  Esys_Quote_Finish@Base 2.3.1
@@ -317,6 +332,7 @@ libtss2-esys.so.0 libtss2-esys-3.0.2-0 #MINVER#
  Esys_SetCommandCodeAuditStatus@Base 2.3.1
  Esys_SetCommandCodeAuditStatus_Async@Base 2.3.1
  Esys_SetCommandCodeAuditStatus_Finish@Base 2.3.1
+ Esys_SetCryptoCallbacks@Base 4.0.1
  Esys_SetPrimaryPolicy@Base 2.3.1
  Esys_SetPrimaryPolicy_Async@Base 2.3.1
  Esys_SetPrimaryPolicy_Finish@Base 2.3.1

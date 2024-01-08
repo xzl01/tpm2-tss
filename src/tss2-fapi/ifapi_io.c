@@ -45,26 +45,10 @@ ifapi_io_read_async(
     const char *filename)
 {
     struct stat statbuf;
-
-    if (stat(filename, &statbuf) == -1) {
-        LOG_ERROR("File \"%s\" not found.", filename);
-        return TSS2_FAPI_RC_IO_ERROR;
-    }
-
-    /* Check whether file is a directory. */
-    if (S_ISDIR(statbuf.st_mode)) {
-        LOG_ERROR("\"%s\" is a directory.", filename);
-        return TSS2_FAPI_RC_IO_ERROR;
-    }
+    struct flock flock  = { 0 };
 
     if (io->char_rbuffer) {
         LOG_ERROR("rbuffer still in use; maybe use of old API.");
-        return TSS2_FAPI_RC_IO_ERROR;
-    }
-
-    if (stat(filename, &statbuf) != 0) {
-        LOG_ERROR("stat failed for \"%s\".", filename);
-        fclose(io->stream);
         return TSS2_FAPI_RC_IO_ERROR;
     }
 
@@ -74,9 +58,26 @@ ifapi_io_read_async(
         return TSS2_FAPI_RC_IO_ERROR;
     }
 
-    /* Locking the file. Lock will be release upon close */
-    if (lockf(fileno(io->stream), F_TLOCK, 0) == -1 && errno == EAGAIN) {
-        LOG_ERROR("File %s currently locked.", filename);
+    if (fstat(fileno(io->stream), &statbuf) == -1) {
+        fclose(io->stream);
+        LOG_ERROR("Execute fstat for \"%s\".", filename);
+        return TSS2_FAPI_RC_IO_ERROR;
+    }
+
+    /* Check whether file is a directory. */
+    if (S_ISDIR(statbuf.st_mode)) {
+        fclose(io->stream);
+        LOG_ERROR("\"%s\" is a directory.", filename);
+        return TSS2_FAPI_RC_IO_ERROR;
+    }
+
+    /* Locking the file. Lock will be released upon close */
+    flock.l_type = F_RDLCK;
+    flock.l_whence = SEEK_SET;
+
+    if (fcntl(fileno(io->stream), F_SETLK, &flock) == -1) {
+        LOG_ERROR("File \"%s\" could not be locked: %s",
+                  filename, strerror(errno));
         fclose(io->stream);
         return TSS2_FAPI_RC_IO_ERROR;
     }
@@ -202,6 +203,7 @@ ifapi_io_write_async(
     size_t length)
 {
     TSS2_RC r;
+    struct flock flock = { 0 };
 
     if (io->char_rbuffer) {
         LOG_ERROR("rbuffer still in use; maybe use of old API.");
@@ -223,11 +225,15 @@ ifapi_io_write_async(
                    "Open file \"%s\" for writing: %s", error, filename,
                    strerror(errno));
     }
-    /* Locking the file. Lock will be release upon close */
-    if (lockf(fileno(io->stream), F_TLOCK, 0) == -1 && errno == EAGAIN) {
+    /* Locking the file. Lock will be released upon close */
+    flock.l_type = F_WRLCK;
+    flock.l_whence = SEEK_SET;
+
+    if (fcntl(fileno(io->stream), F_SETLK, &flock) == -1) {
         fclose(io->stream);
         goto_error(r, TSS2_FAPI_RC_IO_ERROR,
-                   "File %s currently locked.", error, filename);
+                   "File \"%s\" could not be locked: %s", error, filename,
+                   strerror(errno));
     }
 
     /* Use non blocking IO, so asynchronous write will be needed */
@@ -472,9 +478,9 @@ ifapi_io_dirfiles(
     char ***files,
     size_t *numfiles)
 {
-    DIR *dir;
-    struct dirent *entry;
     char **paths;
+    int numentries = 0;
+    struct dirent **namelist;
     size_t numpaths = 0;
     check_not_null(dirname);
     check_not_null(files);
@@ -482,48 +488,44 @@ ifapi_io_dirfiles(
 
     LOG_TRACE("List directory: %s", dirname);
 
-    paths = calloc(10, sizeof(*paths));
-    check_oom(paths);
-
-    if (!(dir = opendir(dirname))) {
-        free(paths);
+    numentries = scandir(dirname, &namelist, NULL, alphasort);
+    if (numentries < 0) {
         return_error2(TSS2_FAPI_RC_IO_ERROR, "Could not open directory: %s",
                       dirname);
     }
 
+    paths = calloc(numentries, sizeof(*paths));
+    check_oom(paths);
+
     /* Iterating through the list of entries inside the directory. */
-    while ((entry = readdir(dir)) != NULL) {
-        LOG_TRACE("Looking at %s", entry->d_name);
-        if (entry->d_type != DT_REG)
+    for (size_t i = 0; i < (size_t) numentries; i++) {
+        LOG_TRACE("Looking at %s", namelist[i]->d_name);
+        if (namelist[i]->d_type != DT_REG)
             continue;
 
-        if (numpaths % 10 == 9) {
-#ifdef HAVE_REALLOCARRAY
-            paths = reallocarray(paths, numpaths + 10, sizeof(*paths));
-#else /* HAVE_REALLOCARRAY */
-            paths = realloc(paths, (numpaths + 10) * sizeof(*paths));
-#endif /* HAVE_REALLOCARRAY */
-            if (!paths)
-                closedir(dir);
-            check_oom(paths);
-        }
-
-        paths[numpaths] = strdup(entry->d_name);
+        paths[numpaths] = strdup(namelist[i]->d_name);
         if (!paths[numpaths])
             goto error_oom;
 
         LOG_TRACE("Added %s to the list at index %zi", paths[numpaths], numpaths);
         numpaths += 1;
     }
-    closedir(dir);
 
     *files = paths;
     *numfiles = numpaths;
 
+    for (int i = 0; i < numentries; i++) {
+        free(namelist[i]);
+    }
+    free(namelist);
+
     return TSS2_RC_SUCCESS;
 
 error_oom:
-    closedir(dir);
+    for (int i = 0; i < numentries; i++) {
+        free(namelist[i]);
+    }
+    free(namelist);
     LOG_ERROR("Out of memory");
     for (size_t i = 0; i < numpaths; i++)
         free(paths[i]);

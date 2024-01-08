@@ -165,7 +165,7 @@ ifapi_profiles_initialize_finish(
     r = ifapi_io_read_finish(io, &buffer, NULL);
     return_if_error(r, "Reading profile failed");
 
-    jso = json_tokener_parse((char *) buffer);
+    jso = ifapi_parse_json((char *) buffer);
     free(buffer);
     if (jso == NULL) {
         LOG_ERROR("Failed to parse profile %s", profiles->filenames[profiles->profiles_idx]);
@@ -250,7 +250,7 @@ ifapi_profiles_get(
     size_t len;
 
     /* if no name or nor profile prefix is given, use the default profile */
-    if (!name || strncmp(name, "P_", 2) != 0 || strncmp(name, "/P_", 2) != 0) {
+    if (!name || !(strncmp(name, "P_", 2) == 0 || strncmp(name, "/P_", 3) == 0)) {
         *profile = &profiles->default_profile;
         return TSS2_RC_SUCCESS;
     }
@@ -537,6 +537,15 @@ ifapi_profile_json_deserialize(
         r = ifapi_json_UINT32_deserialize(jso2, &out->lockoutRecovery);
         return_if_error(r, "Bad value for field \"lockoutRecovery\".");
     }
+
+    if (ifapi_get_sub_object(jso, "ignore_ek_template", &jso2)) {
+        r = ifapi_json_TPMI_YES_NO_deserialize(jso2, &out->ignore_ek_template);
+        return_if_error(r, "Bad value for field \"ignore_ek_template\".");
+
+    } else {
+        out->ignore_ek_template = TPM2_NO;
+    }
+
 
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;

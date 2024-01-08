@@ -162,6 +162,12 @@ libtss2-sys.so.1 libtss2-sys1 #MINVER#
  Tss2_Sys_LoadExternal_Prepare@Base 3.0.1
  Tss2_Sys_Load_Complete@Base 3.0.1
  Tss2_Sys_Load_Prepare@Base 3.0.1
+ Tss2_Sys_MAC@Base 4.0.1
+ Tss2_Sys_MAC_Complete@Base 4.0.1
+ Tss2_Sys_MAC_Prepare@Base 4.0.1
+ Tss2_Sys_MAC_Start@Base 4.0.1
+ Tss2_Sys_MAC_Start_Complete@Base 4.0.1
+ Tss2_Sys_MAC_Start_Prepare@Base 4.0.1
  Tss2_Sys_MakeCredential@Base 3.0.1
  Tss2_Sys_MakeCredential_Complete@Base 3.0.1
  Tss2_Sys_MakeCredential_Prepare@Base 3.0.1

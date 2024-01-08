@@ -1,4 +1,6 @@
 0001_disable_fapi_io_test.patch
-0002-tests-enable-tcti-pcap-tests-on-big-endian-platforms.patch
-0003-FAPI-Improve-error-messages-for-decoding-base64-data.patch
-0004-FAPI-fix-bug-of-bad-type-casting.patch
+0002-fix-version.patch
+0003-test-unit-tcti-libtpms-fix-test-failed-at-32-bit-pla.patch
+0004-tss2-tcti-tcti-libtpms-fix-test-failure-on-big-endia.patch
+fix-tcti-spi-helper-big-endian.patch
+disable-tests-on-big-endian.patch

@@ -17,6 +17,7 @@
 #define LOGMODULE fapi
 #include "util/log.h"
 #include "util/aux_util.h"
+#include "tpm_json_deserialize.h"
 #include "ifapi_policy_json_deserialize.h"
 #include "ifapi_policy_json_serialize.h"
 
@@ -146,15 +147,28 @@ ifapi_policy_store_load_async(
     LOG_TRACE("Load policy: %s", path);
 
     /* First it will be checked whether the only valid characters occur in the path. */
-    r = ifapi_check_valid_path(path);
-    return_if_error(r, "Invalid path.");
+    if (pstore) {
+        r = ifapi_check_valid_path(path);
+        return_if_error(r, "Invalid path.");
+    }
 
     /* Free old input buffer if buffer exists */
     SAFE_FREE(io->char_rbuffer);
 
     /* Convert relative path to absolute path in keystore */
-    r = policy_rel_path_to_abs_path(pstore, path, &abs_path);
-    goto_if_error2(r, "Object %s not found.", cleanup, path);
+    if (pstore) {
+        r = policy_rel_path_to_abs_path(pstore, path, &abs_path);
+        goto_if_error2(r, "Object %s not found.", cleanup, path);
+    } else {
+        abs_path = strdup(path);
+        if (!abs_path) {
+            return TSS2_FAPI_RC_MEMORY;
+        }
+    }
+
+    if (!ifapi_io_path_exists(abs_path)) {
+        goto_error(r, TSS2_FAPI_RC_BAD_PATH, "Policy %s does not exist.", cleanup, path);
+    }
 
     /* Prepare read operation */
     r = ifapi_io_read_async(io, abs_path);
@@ -199,7 +213,7 @@ ifapi_policy_store_load_finish(
     return_if_error(r, "keystore read_finish failed");
 
     /* If json objects can't be parse the object store is corrupted */
-    jso = json_tokener_parse((char *)buffer);
+    jso = ifapi_parse_json((char *)buffer);
     SAFE_FREE(buffer);
     return_if_null(jso, "Policy store is corrupted (Json error).", TSS2_FAPI_RC_GENERAL_FAILURE);
 

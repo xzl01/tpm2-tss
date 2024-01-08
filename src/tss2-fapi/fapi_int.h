@@ -145,6 +145,13 @@ enum IFAPI_CLEANUP_STATE {
     CLEANUP_SRK
 };
 
+/** The states for the FAPI's reading nv public*/
+enum IFAPI_READ_NV_PUBLIC_STATE {
+    READ_NV_PUBLIC_INIT = 0,
+    READ_NV_PUBLIC_GET_ESYS_TR,
+    READ_NV_PUBLIC_GET_PUBLIC
+};
+
 #define IFAPI_MAX_CAP_INFO 17
 
 typedef struct {
@@ -191,7 +198,11 @@ enum _FAPI_STATE_NV_READ {
     NV_READ_INIT = 0,
     NV_READ_AUTHORIZE,
     NV_READ_AUTHORIZE2,
-    NV_READ_AUTH_SENT
+    NV_READ_AUTH_SENT,
+    NV_READ_CHECK_HANDLE,
+    NV_READ_GET_CAPABILITY,
+    NV_READ_GET_ESYS_HANDLE,
+    NV_READ_GET_NV_PUBLIC
 };
 
 /** The states for the FAPI's NV write state */
@@ -215,6 +226,7 @@ typedef struct {
     TPM2B_NV_PUBLIC public;     /**< The public info of the NV object. */
     ESYS_TR esys_auth_handle;   /**< The ESAPI handle for the NV auth object */
     ESYS_TR esys_handle;        /**< The ESAPI handle for the NV object */
+    TPM2_HANDLE tpm_handle;     /**< The TPM nv index */
     size_t numBytes;            /**< The number of bytes of a ESYS request */
     UINT16 bytesRequested;      /**< Bytes currently requested from TPM */
     UINT16 offset;              /**< Offset in TPM memory TPM */
@@ -341,6 +353,7 @@ enum IFAPI_KEY_CREATE_STATE {
     KEY_CREATE_FLUSH1,
     KEY_CREATE_FLUSH2,
     KEY_CREATE_CALCULATE_POLICY,
+    KEY_CREATE_PRIMARY_CALCULATE_POLICY,
     KEY_CREATE_WAIT_FOR_AUTHORIZATION,
     KEY_CREATE_CLEANUP,
     KEY_CREATE_WAIT_FOR_RANDOM,
@@ -386,7 +399,6 @@ typedef struct {
     uint8_t const *in_data;
     size_t in_dataSize;
     IFAPI_OBJECT *key_object;       /**< The IPAPI object for the encryption key */
-    uint8_t *out_data;               /**< The output of symmetric encrypt/decryption */
     ESYS_TR key_handle;                 /**< The ESYS handle of the encryption key */
     size_t numBytes;                /**< The number of bytes of a ESYS request */
     size_t decrypt;                 /**< Switch whether to encrypt or decrypt */
@@ -475,8 +487,12 @@ typedef struct {
     TPM2B_AUTH newAuthValue;        /**< The new auth value */
     TPM2B_PRIVATE *newPrivate;      /**< New private data created by parend */
     IFAPI_OBJECT object;            /**< Deserialized NV object or hierarchy */
+    IFAPI_OBJECT hiearchy_object;   /**< Used for copying a hierarchy   */
     ESYS_TR nv_index;               /**< NV handle of the object to be changed */
     ESYS_TR hierarchy_handle;       /**< NV handle of the hierarchy to be changed */
+    char **pathlist;                /**< The array with all keystore objects */
+    size_t numPaths;                /**< Size of array with all keystore objects */
+    size_t numPathsCleanup;         /**< Size of array with all keystore objects */
 } IFAPI_Entity_ChangeAuth;
 
 /** The data structure holding internal state of Fapi_AuthorizePolicy.
@@ -543,6 +559,9 @@ typedef struct {
     ESYS_TR ek_esys_handle;
     ESYS_TR srk_tpm_handle;
     ESYS_TR ek_tpm_handle;
+    bool srk_exists;
+    TPM2_HANDLE template_nv_index;
+    TPM2_HANDLE nonce_nv_index;
 } IFAPI_Provision;
 
 /** The data structure holding internal state of regenerate primary key.
@@ -577,6 +596,7 @@ enum IFAPI_STATE_POLICY {
     POLICY_READ_FINISH,
     POLICY_INSTANTIATE_PREPARE,
     POLICY_INSTANTIATE,
+    POLICY_EXECUTE_PREPARE,
     POLICY_EXECUTE,
     POLICY_FLUSH
 };
@@ -631,6 +651,14 @@ typedef struct {
     size_t numPaths;                /**< Number of all objects in data store */
     char *current_path;
 } IFAPI_FILE_SEARCH_CTX;
+
+/** The states for the FAPI's prepare key loading */
+enum _FAPI_STATE_PREPARE_LOAD_KEY {
+    PREPARE_LOAD_KEY_INIT = 0,
+    PREPARE_LOAD_KEY_WAIT_FOR_SESSION,
+    PREPARE_LOAD_KEY_INIT_KEY,
+    PREPARE_LOAD_KEY_WAIT_FOR_KEY
+};
 
 /** The states for the FAPI's key loading */
 enum _FAPI_STATE_LOAD_KEY {
@@ -690,6 +718,7 @@ typedef struct {
  */
 typedef struct {
     enum _FAPI_STATE_LOAD_KEY state;   /**< The current state of key  loading */
+    enum  _FAPI_STATE_PREPARE_LOAD_KEY prepare_state;
     NODE_STR_T *path_list;        /**< The current used hierarchy for CreatePrimary */
     NODE_OBJECT_T *key_list;
     IFAPI_OBJECT auth_object;
@@ -699,6 +728,7 @@ typedef struct {
     bool parent_handle_persistent;
     IFAPI_OBJECT *key_object;
     char *key_path;
+    char const *path;
 } IFAPI_LoadKey;
 
 /** The data structure holding internal state of entity delete.
@@ -774,6 +804,7 @@ enum _FAPI_STATE_PRIMARY {
     PRIMARY_READ_HIERARCHY,
     PRIMARY_READ_HIERARCHY_FINISH,
     PRIMARY_AUTHORIZE_HIERARCHY,
+    PRIMARY_GET_AUTH_VALUE,
     PRIMARY_WAIT_FOR_PRIMARY,
     PRIMARY_HAUTH_SENT,
     PRIMARY_CREATED,
@@ -829,6 +860,8 @@ enum _FAPI_STATE {
     PROVISION_READ_CERT,
     PROVISION_PREPARE_READ_ROOT_CERT,
     PROVISION_READ_ROOT_CERT,
+    PROVISION_PREPARE_READ_INT_CERT,
+    PROVISION_READ_INT_CERT,
     PROVISION_INIT,
     PROVISION_INIT_SRK,
     PROVISION_WAIT_FOR_EK_SESSION,
@@ -873,6 +906,12 @@ enum _FAPI_STATE {
     PROVISION_WRITE_HIERARCHIES,
     PROVISION_WRITE_HIERARCHY,
     PROVISION_PREPARE_GET_CAP_AUTH_STATE,
+    PROVISION_SRK_GET_PERSISTENT_NAME,
+    PROVISION_CHECK_SRK_EVICT_CONTROL,
+    PROVISION_AUTHORIZE_HS_FOR_EK_EVICT,
+    PROVISION_PREPARE_EK_EVICT,
+    PROVISION_READ_EK_TEMPLATE,
+    PROVISION_READ_EK_NONCE,
 
     KEY_CREATE,
     KEY_CREATE_PRIMARY,
@@ -979,6 +1018,8 @@ enum _FAPI_STATE {
     ENTITY_CHANGE_AUTH_HIERARCHY_CHANGE_AUTH,
     ENTITY_CHANGE_AUTH_HIERARCHY_READ,
     ENTITY_CHANGE_AUTH_HIERARCHY_AUTHORIZE,
+    ENTITY_CHANGE_AUTH_SAVE_HIERARCHIES_PREPARE,
+    ENTITY_CHANGE_AUTH_SAVE_HIERARCHIES_FINISH,
     ENTITY_CHANGE_AUTH_CLEANUP,
 
     DATA_ENCRYPT_WAIT_FOR_PROFILE,
@@ -1133,6 +1174,7 @@ struct FAPI_CONTEXT {
     enum IFAPI_GET_CERT_STATE get_cert_state;
     enum _FAPI_FLUSH_STATE flush_object_state;  /**< The current state of a flush operation */
     enum IFAPI_CLEANUP_STATE cleanup_state;     /**< The state of cleanup after command execution */
+    enum IFAPI_READ_NV_PUBLIC_STATE read_nv_public_state;
     IFAPI_CONFIG config;             /**< The profile independent configuration data */
     UINT32 nv_buffer_max;            /**< The maximal size for transfer of nv buffer content */
     IFAPI_CMD_STATE cmd;             /**< The state information of the currently executed

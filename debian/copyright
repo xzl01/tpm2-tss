@@ -6,10 +6,6 @@ Files: *
 Copyright: 2015, Intel Corporation
 License: BSD-2-clause
 
-Files: include/tss2/implementation.h include/tss2/tpmb.h
-Copyright: 2015, Trusted Computing Group (TCG)
-License: TCG
-
 Files: debian/*
 Copyright: 2016 Canonical Ltd.
 	   2016 Mathieu Trudel-Lapierre <mathieu.trudel-lapierre@canonical.com>

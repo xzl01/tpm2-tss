@@ -55,6 +55,8 @@ new_policy(
     (*current_policy)->pol_exec_ctx = pol_exec_ctx;
     pol_exec_ctx->callbacks.cbauth = ifapi_policyeval_cbauth;
     pol_exec_ctx->callbacks.cbauth_userdata = context;
+    pol_exec_ctx->callbacks.cbload = ifapi_policyeval_cbload_key;
+    pol_exec_ctx->callbacks.cbload_userdata = context;
     pol_exec_ctx->callbacks.cbpolsel = ifapi_branch_selection;
     pol_exec_ctx->callbacks.cbpolsel_userdata = context;
     pol_exec_ctx->callbacks.cbsign = ifapi_sign_buffer;
@@ -172,7 +174,7 @@ clear_current_policy(FAPI_CONTEXT *context)
  * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN If the callback for branch selection is
  *         not defined. This callback will be needed of or policies have to be
  *         executed.
- * @retval TSS2_FAPI_RC_BAD_VALUE If the computed branch index deliverd by the
+ * @retval TSS2_FAPI_RC_BAD_VALUE If the computed branch index delivered by the
  *         callback does not identify a branch.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE If no context is passed.
  *
@@ -259,7 +261,6 @@ ifapi_policyutil_execute(FAPI_CONTEXT *context, ESYS_TR *session)
         context->policy.util_current_policy = pol_util_ctx;
     }
     LOG_TRACE("Util context: %p", pol_util_ctx);
-
     if (!pol_util_ctx) {
         return_error(TSS2_FAPI_RC_GENERAL_FAILURE, "No policy util stack.");
     }
@@ -288,7 +289,8 @@ ifapi_policyutil_execute(FAPI_CONTEXT *context, ESYS_TR *session)
 
         statecase(pol_util_ctx->state, POLICY_UTIL_EXEC_POLICY);
             r = ifapi_policyeval_execute(context->esys,
-                                         pol_util_ctx->pol_exec_ctx);
+                                         pol_util_ctx->pol_exec_ctx,
+                                         true);
             if (base_rc(r) == TSS2_BASE_RC_TRY_AGAIN) {
                 context->policy.util_current_policy = pol_util_ctx->prev;
                 return TSS2_FAPI_RC_TRY_AGAIN;

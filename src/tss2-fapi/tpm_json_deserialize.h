@@ -15,6 +15,29 @@
 #define YES 1
 #define NO 0
 
+/* Deserialize according to the rules of parenttype and then filter against values
+   provided in the ... list. */
+#define SUBTYPE_FILTER(type, parenttype, ...) \
+    TSS2_RC r; \
+    type tab[] = { __VA_ARGS__ }; \
+    type v; \
+    r = ifapi_json_ ## parenttype ## _deserialize(jso, &v); \
+    return_if_error(r, "Bad value"); \
+    for (size_t i = 0; i < sizeof(tab) / sizeof(tab[0]); i++) { \
+        if (v == tab[i]) { \
+            *out = v; \
+            return TSS2_RC_SUCCESS; \
+        } \
+    } \
+    LOG_ERROR("Bad sub-value"); \
+    return TSS2_FAPI_RC_BAD_VALUE;
+
+json_object*
+ifapi_parse_json(const char *jstring) ;
+
+TSS2_RC
+ifapi_hex_to_byte_ary(const char hex[], UINT32 vlen, BYTE val[]);
+
 TSS2_RC
 ifapi_json_BYTE_array_deserialize(size_t max, json_object *jso, BYTE *out);
 
@@ -65,6 +88,9 @@ ifapi_json_TPMA_OBJECT_deserialize(json_object *jso, TPMA_OBJECT *out);
 
 TSS2_RC
 ifapi_json_TPMA_LOCALITY_deserialize(json_object *jso, TPMA_LOCALITY *out);
+
+TSS2_RC
+ifapi_json_TPMA_ACT_deserialize(json_object *jso, TPMA_ACT *out);
 
 TSS2_RC
 ifapi_json_TPMI_YES_NO_deserialize(json_object *jso, TPMI_YES_NO *out);
@@ -139,6 +165,14 @@ ifapi_json_TPMS_PCR_SELECT_deserialize(json_object *jso, TPMS_PCR_SELECT *out);
 TSS2_RC
 ifapi_json_TPMS_PCR_SELECTION_deserialize(json_object *jso,
         TPMS_PCR_SELECTION *out);
+
+TSS2_RC
+ifapi_json_TPMS_TAGGED_POLICY_deserialize(json_object *jso,
+        TPMS_TAGGED_POLICY *out);
+
+TSS2_RC
+ifapi_json_TPMS_ACT_DATA_deserialize(json_object *jso,
+        TPMS_ACT_DATA *out);
 
 TSS2_RC
 ifapi_json_TPMT_TK_CREATION_deserialize(json_object *jso,

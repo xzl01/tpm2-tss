@@ -119,6 +119,20 @@ ifapi_json_IFAPI_CONFIG_deserialize(json_object *jso, IFAPI_CONFIG *out)
         return_if_error(r, "Bad value for field \"intel_cert_service\".");
     }
 
+    if (!ifapi_get_sub_object(jso, "firmware_log_file", &jso2)) {
+        out->firmware_log_file = NULL;
+    } else {
+        r = ifapi_json_char_deserialize(jso2, &out->firmware_log_file);
+        return_if_error(r, "BAD VALUE");
+    }
+
+    if (!ifapi_get_sub_object(jso, "ima_log_file", &jso2)) {
+        out->ima_log_file = NULL;
+    } else {
+        r = ifapi_json_char_deserialize(jso2, &out->ima_log_file);
+        return_if_error(r, "BAD VALUE");
+    }
+
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
@@ -240,7 +254,7 @@ ifapi_config_initialize_finish(IFAPI_IO *io, IFAPI_CONFIG *config)
     }
 
     /* Parse and deserialize the configuration file */
-    jso = json_tokener_parse((char *)configFileContent);
+    jso = ifapi_parse_json((char *)configFileContent);
     goto_if_null(jso, "Could not parse JSON objects",
             TSS2_FAPI_RC_GENERAL_FAILURE, error);
     r = ifapi_json_IFAPI_CONFIG_deserialize(jso, config);

@@ -1,1 +1,4 @@
+etc/tmpfiles.d/tpm2-tss-fapi.conf usr/lib/tmpfiles.d/
+etc/tpm2-tss/fapi-config.json
+etc/tpm2-tss/fapi-profiles/P_*.json
 usr/lib/*/libtss2-fapi.so.*

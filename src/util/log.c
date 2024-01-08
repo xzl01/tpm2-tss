@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -20,6 +21,18 @@
 #define likely(x)       (x)
 #define unlikely(x)     (x)
 #endif
+
+#if MAXLOGLEVEL != LOGL_NONE
+
+static const char *log_strings[] = {
+    "none",
+    "(unused)",
+    "ERROR",
+    "WARNING",
+    "info",
+    "debug",
+    "trace"
+};
 
 /**
  * Compares two strings byte by byte and ignores the
@@ -128,6 +141,12 @@ doLogBlob(log_level loglevel, const char *module, log_level logdefault,
     char msg[msg_len+1];
     vsnprintf(msg, sizeof(msg), fmt, vaargs);
     va_end(vaargs);
+
+    if (!blob) {
+        doLog(loglevel, module, logdefault, status, file, func, line,
+              "%s (size=%zi): (null)", msg, size);
+	return;
+    }
 
     doLog(loglevel, module, logdefault, status, file, func, line,
           "%s (size=%zi):", msg, size);
@@ -244,3 +263,4 @@ getLogLevel(const char *module, log_level logdefault)
     }
     return loglevel;
 }
+#endif
